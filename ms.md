@@ -320,4 +320,143 @@ Spring4.x
 
 Spring5.x
 
+- 正常执行：@Around > @Before > 方法打印> @AfterReturning > @After > @Around 
+- 抛出异常：@Around > @Before > @AfterThrowing > @After > 异常信息
+
 ### 循环依赖
+
+多个bean之间相互依赖，形成了一个闭环。Spring循环依赖抛出BeanCurrentlyInCreationException。
+
+只要注入方式是setter且是单例的，就不会有循环依赖问题。
+
+#### Spring三级缓存
+
+只有单例的bean会通过三级缓存提前暴露来解决循环依赖的问题，而非单例的bean，每次从容器中获取的都是一个新的对象，都会重新创建，所以非单例的bean是没有缓存的，不会将其放到三级缓存中。
+
+第一级（单例池）：singletonObjects，存放已经经历了完整生命周期的bean对象。
+
+第二级：earlySingletonObjects，存放早期暴露出来的Bean对象，Bean的生命周期未结束（属性还未填充）。
+
+第三级：Map<String,  ObjectFactory<?>> singletonFactories，存放可以生成Bean的工厂。
+
+![ms-004](https://cdn.jsdelivr.net/gh/Polar1sssss/FigureBed/img/ms-004.png)
+
+#### 源码解析
+
+![ms-003](https://cdn.jsdelivr.net/gh/Polar1sssss/FigureBed/img/ms-003.png)
+
+![ms-005](https://cdn.jsdelivr.net/gh/Polar1sssss/FigureBed/img/ms-005.png)
+
+实例化：内存中申请一块空间
+
+初始化：属性填充，完成属性的各种赋值
+
+第一层缓存singletonObjects存放已经初始化好的Bean；第二层缓存earlySingletonObjects存放实例化但未初始化的Bean；第三层缓存singletonFactories存放的是FactoryBean，如果某个类实现了FactoryBean，那么依赖注入的不是该类，而是该类对应的Bean。
+
+
+
+A/B两个互相依赖的对象在三级缓存中迁移说明？
+
+1. A创建过程中需要用到B，于是A将自己放到三级缓存里面，去实例化B
+2. B实例化的时候需要A，于是B先查一级缓存，没有，再查二级缓存，还没有，再查三级缓存，找到A并把三级缓存中的A放到二级缓存里面，并删除三级缓存里面的A
+3. B顺利初始化完毕，将自己放到一级缓存中（此时B里面的A依然是创建中状态），然后回来接着创建A，此时B已经创建结束，直接从一级缓存中拿到B，完成A的创建并把A放到一级缓存中
+
+
+
+Spring解决循环依赖依靠的是Bean“中间态”的概念，即已经实例化但是还未初始化的状态。实例化过程是通过构造器实现的，如果A还未创建好则不能提前暴露，所以构造器注入无法解决循环依赖问题。
+
+
+
+Spring解决循环依赖过程：
+
+1. 调用doGetBean()方法，想要获取beanA，于是调用getSingleton()方法从缓存中查找beanA
+2. 在getSingleton()方法中，从一级缓存中查找，没有，返回null
+3. doGetBean()方法中获取到的beanA为null，于是走对应的处理逻辑，调用getSingleton()的重载方法（参数为ObjectFactory的)
+4. 在getSingleton()方法中，先将beanA_name添加到一个集合中，用于标记该bean正在创建中。然后回调匿名内部类的creatBean方法
+5. 进入AbstractAutowireCapableBeanFactory#doCreateBean，先利用反射创建出beanA的实例，然后判断：是否为单例、是否允许提前暴露引用(对于单例一般为true)、是否正在创建中（即是否在第四步的集合中）。判断为true则将beanA添加到【三级缓存】中
+6. 对beanA进行属性填充（populateBean），此时检测到beanA依赖于beanB，于是开始查找beanB
+7. 调用doGetBean()方法，和上面beanA的过程一样，到缓存中查找beanB，没有则创建，然后给beanB填充属性
+8. 此时 beanB依赖于beanA，调用getSingleton()获取beanA，依次从一级、二级、三级缓存中找，此时从三级缓存中获取到beanA的创建工厂，通过创建工厂获取到singletonObject，此时这个singletonObject指向的就是上面在doCreateBean()方法中实例化的beanA
+9. 这样beanB就获取到了beanA的依赖，于是beanB顺利完成实例化，并将beanA从三级缓存移动到二级缓存中
+10. 随后beanA继续他的属性填充工作，此时也获取到了beanB，beanA也随之完成了创建，回到getsingleton()方法中继续向下执行，将beanA从二级缓存移动到一级缓存中
+
+## Redis
+
+string  list  hash  set  zset  bitmap  hyperloglog  geo
+
+命令关键字不区分大小写，key区分大小写
+
+### 五大数据类型的落地应用
+
+#### String
+
+设置获取：set key value / get key
+
+批量设置获取：mset key value[key1 value1...] / mget key [key1]
+
+递增：incr key / incrby key increment
+
+递减：decr key / decrby key increment
+
+获取字符串长度：strlen key 
+
+分布式锁：
+
+​	setnx key value
+
+​	set key value [EX seconds] [PX milliseconds] [NX|XX]
+
+说明：
+
+​	EX -- key在多少秒后过期    
+
+​	PX -- key在多少毫秒之后过期    
+
+​	NX -- 当key不存在的时候创建key，效果等同于setnx    
+
+​	XX -- 当key存在时候，覆盖key 
+
+应用场景：商品编号、订单号、点赞、踩：incr item:001
+
+#### Hash
+
+Map<String, Map<Object, Object>>
+
+设置获取：hset key field value / hset key field
+
+批量设置获取：hmset key field value [field1 value1...] / hmset key field [field1]
+
+获取所有字段值：hgetall key
+
+获取key中字段的数量：hlen key
+
+删除key：hdel key
+
+应用场景：
+
+​	购物车早期，中小厂可用
+
+​	新增商品：hset shopcar:1024 11111 1
+
+​	新增商品：hset shopcar:1024 22222 1
+
+​	增加商品商量：hincrby shopcar:1024 22222 1
+
+​	全部选择：hgetall shopcar:1024
+
+#### List
+
+
+
+#### Set
+
+#### Zset
+
+
+
+
+
+
+
+
+
