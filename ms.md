@@ -351,9 +351,11 @@ Spring5.x
 
 初始化：属性填充，完成属性的各种赋值
 
+------
+
 第一层缓存singletonObjects存放已经初始化好的Bean；第二层缓存earlySingletonObjects存放实例化但未初始化的Bean；第三层缓存singletonFactories存放的是FactoryBean，如果某个类实现了FactoryBean，那么依赖注入的不是该类，而是该类对应的Bean。
 
-
+------
 
 A/B两个互相依赖的对象在三级缓存中迁移说明？
 
@@ -361,24 +363,26 @@ A/B两个互相依赖的对象在三级缓存中迁移说明？
 2. B实例化的时候需要A，于是B先查一级缓存，没有，再查二级缓存，还没有，再查三级缓存，找到A并把三级缓存中的A放到二级缓存里面，并删除三级缓存里面的A
 3. B顺利初始化完毕，将自己放到一级缓存中（此时B里面的A依然是创建中状态），然后回来接着创建A，此时B已经创建结束，直接从一级缓存中拿到B，完成A的创建并把A放到一级缓存中
 
-
+------
 
 Spring解决循环依赖依靠的是Bean“中间态”的概念，即已经实例化但是还未初始化的状态。实例化过程是通过构造器实现的，如果A还未创建好则不能提前暴露，所以构造器注入无法解决循环依赖问题。
 
+------
 
+![ms-007](https://cdn.jsdelivr.net/gh/Polar1sssss/FigureBed/img/ms-007.png)
 
 Spring解决循环依赖过程：
 
 1. 调用doGetBean()方法，想要获取beanA，于是调用getSingleton()方法从缓存中查找beanA
-2. 在getSingleton()方法中，从一级缓存中查找，没有，返回null
+2. 在getSingleton()方法中，从【一级缓存】中查找，没有，返回null
 3. doGetBean()方法中获取到的beanA为null，于是走对应的处理逻辑，调用getSingleton()的重载方法（参数为ObjectFactory的)
 4. 在getSingleton()方法中，先将beanA_name添加到一个集合中，用于标记该bean正在创建中。然后回调匿名内部类的creatBean方法
 5. 进入AbstractAutowireCapableBeanFactory#doCreateBean，先利用反射创建出beanA的实例，然后判断：是否为单例、是否允许提前暴露引用(对于单例一般为true)、是否正在创建中（即是否在第四步的集合中）。判断为true则将beanA添加到【三级缓存】中
 6. 对beanA进行属性填充（populateBean），此时检测到beanA依赖于beanB，于是开始查找beanB
-7. 调用doGetBean()方法，和上面beanA的过程一样，到缓存中查找beanB，没有则创建，然后给beanB填充属性
-8. 此时 beanB依赖于beanA，调用getSingleton()获取beanA，依次从一级、二级、三级缓存中找，此时从三级缓存中获取到beanA的创建工厂，通过创建工厂获取到singletonObject，此时这个singletonObject指向的就是上面在doCreateBean()方法中实例化的beanA
-9. 这样beanB就获取到了beanA的依赖，于是beanB顺利完成实例化，并将beanA从三级缓存移动到二级缓存中
-10. 随后beanA继续他的属性填充工作，此时也获取到了beanB，beanA也随之完成了创建，回到getsingleton()方法中继续向下执行，将beanA从二级缓存移动到一级缓存中
+7. 调用doGetBean()方法，和上面beanA的过程一样，到缓存中查找beanB，没有则先在【三级缓存】中创建，然后给beanB填充属性
+8. 此时 beanB依赖于beanA，调用getSingleton()获取beanA，依次从一级、二级、三级缓存中找，此时从【三级缓存】中获取到beanA的创建工厂，通过创建工厂获取到singletonObject，此时这个singletonObject指向的就是上面在doCreateBean()方法中实例化的beanA
+9. 将beanA从【三级缓存】移动到【二级缓存】，beanB就获取到了beanA的依赖，beanB顺利完成实例化，从【三级缓存】直接移动到【一级缓存】
+10. 随后beanA继续属性填充工作，从【一级缓存】中获取到beanB，beanA完成初始化，回到getsingleton()方法中继续向下执行，将beanA从二级缓存移动到一级缓存中
 
 ## Redis
 
@@ -390,73 +394,394 @@ string  list  hash  set  zset  bitmap  hyperloglog  geo
 
 #### String
 
-设置获取：set key value / get key
+- 设置获取：set key value / get key
 
-批量设置获取：mset key value[key1 value1...] / mget key [key1]
+- 批量设置获取：mset key value[key1 value1...] / mget key [key1]
 
-递增：incr key / incrby key increment
+- 递增：incr key / incrby key increment
 
-递减：decr key / decrby key increment
+- 递减：decr key / decrby key increment
 
-获取字符串长度：strlen key 
+- 获取字符串长度：strlen key 
 
-分布式锁：
+- 分布式锁：
 
-​	setnx key value
+  ​	setnx key value
 
-​	set key value [EX seconds] [PX milliseconds] [NX|XX]
+  ​	set key value [EX seconds] [PX milliseconds] [NX|XX]
 
-说明：
+- 参数说明：
 
-​	EX -- key在多少秒后过期    
+  ​	EX -- key在多少秒后过期    
 
-​	PX -- key在多少毫秒之后过期    
+  ​	PX -- key在多少毫秒之后过期    
 
-​	NX -- 当key不存在的时候创建key，效果等同于setnx    
+  ​	NX -- 当key不存在的时候创建key，效果等同于setnx    
 
-​	XX -- 当key存在时候，覆盖key 
+  ​	XX -- 当key存在时候，覆盖key 
 
-应用场景：商品编号、订单号、点赞、踩：incr item:001
+- 应用场景：商品编号、订单号、点赞、踩：incr item:001
+
 
 #### Hash
 
 Map<String, Map<Object, Object>>
 
-设置获取：hset key field value / hset key field
+- 设置获取：hset key field value / hset key field
 
-批量设置获取：hmset key field value [field1 value1...] / hmset key field [field1]
+- 批量设置获取：hmset key field value [field1 value1...] / hmset key field [field1]
 
-获取所有字段值：hgetall key
+- 获取所有字段值：hgetall key
 
-获取key中字段的数量：hlen key
+- 获取key中字段的数量：hlen key
 
-删除key：hdel key
+- 删除key：hdel key
 
-应用场景：
+- 应用场景：
 
-​	购物车早期，中小厂可用
+  ​	购物车早期，中小厂可用
 
-​	新增商品：hset shopcar:1024 11111 1
+  ​	新增商品：hset shopcar:1024 11111 1
 
-​	新增商品：hset shopcar:1024 22222 1
+  ​	新增商品：hset shopcar:1024 22222 1
 
-​	增加商品商量：hincrby shopcar:1024 22222 1
+  ​	增加商品商量：hincrby shopcar:1024 22222 1
 
-​	全部选择：hgetall shopcar:1024
+  ​	全部选择：hgetall shopcar:1024
 
 #### List
 
-
+- 向列表左边/右边添加元素：lpush/rpush key value [value...]
+- 查看列表：lrange key start stop
+- 获取列表中元素个数：llen key
+- 应用场景：订阅的公众号推送文章
 
 #### Set
 
+- 添加元素：sadd key member[member1...]
+- 删除元素：srem key member[member1]
+- 获取集合中所有元素：smembers key
+- 判断元素是否在集合中：sismember key member
+- 获取集合中元素个数：scard key
+- 从集合中随机弹出一个元素，元素不删除：srandmember key [弹出元素个数]
+- 从集合中随机弹出一个元素，元素删除：spop key [弹出元素个数]
+- 集合运算：
+  - 差集：sdiff key [key1]
+  - 交集：sinter key [key1]
+  - 并集：sunion key [key1]
+- 应用场景：
+  - 微信抽奖小程序：参与抽奖（sadd）、显示参与人数（scard）、抽奖（srandmember、spop）
+  - 微信朋友圈点赞：点赞（sadd 朋友圈id 点赞用户id1 点赞用户id2）、取消点赞（srem 朋友圈id 点赞用户id1）、展现所有点赞用户（smember 朋友圈id）、点赞数（scard 朋友圈id）
+  - 微博好友关注社交关系：共同关注的人（sinter k1 k2）、我关注的人也关注他（sismember k1 v、sismember k2 v 都返回true）
+  - QQ推送可能认识的人：A认识B不认识的推送给B（sdiff A B）
+
 #### Zset
 
+向有序集合中加入一个元素和该元素的分数。
+
+- 添加元素：zadd key score member [score1 member1...]
+- 按照分数从小到大顺序返回索引在start到stop之间的元素：zrange key start stop [WITHSCORES]
+- 获取元素的分数：zscore key member
+- 删除元素：zrem key member [member1]
+- 获取指定分数范围的元素：zrangebyscore key min max [WITHSCORES] [LIMIT offset count]
+- 增加某个元素的分数：zincrby key increment member
+- 获取集合中元素的数量：zcard key
+- 获取指定分数范围内元素个数：zcount key min max
+- 按照排名范围删除元素：zremrangebyrank key start stop
+- 获取元素的排名：
+  - 从小到大：zrank key member
+  - 从大到小：zrevrank key member
+- 应用场景：
+  - 根据商品销售量对商品排序展示
+  - 抖音热搜
+
+### 分布式锁
+
+```java
+/**
+ * 1、多线程情况下出现安全问题：加单机锁synchronized或者Lock
+ * 2、使用nginx组成分布式架构，单机锁无用：使用redis的setNx命令加分布式锁
+ * 3、加分布式锁出现异常，解锁操作无法进行：解锁操作放到finally代码块中
+ * 4、微服务服务器宕机，分布式锁的key永远无法删除：对分布式锁设置过期时间
+ * 5、加锁操作和设置过期时间代码不在一行，不具备原子性：使用setIfAbsent(String key, String value, 	
+ * long timeout, TimeUnit unit)
+ * 6、过期时间内业务没有处理完成，会出现删除别人的锁的现象（加锁解锁不是同一个客户端）：解锁之前判断value是 	* 否是加锁时的value
+ * 7、分布式锁的判断和删除非原子操作：LUA脚本、事务
+ * 8.1、确保RedisLock过期时间大于业务执行之间：分布式锁续期
+ * 8.2、AP，redis主从异步复制导致数据丢失（主机没来得及同步锁就挂掉了，从机上不具备锁信息）
+ * 8问题的解决方案：RedLock，在java中具体实现为Redisson
+ * 伪代码，##和**代表配套使用的部分
+ */
+@RestController
+public class TestDistributeLock {
+    public static final LOCK_NAME = "abc";
+    @Autowired
+    private StringRedisTemplate template;
+    @Autowired
+    private Redisson redisson;
+    
+    @GetMapping("/buyGoods")
+    public String buyGoods() {
+       	String value = UUID.randomUUID().toString + Thread.currentThread.getName();
+        
+        // ##redisson方式加锁
+        RLock redissonLock = redisson.getLock(LOCK_NAME);
+        redissonLock.lock();
+        
+        try {
+            // 加分布式锁的时候设置过期时间，保证原子性操作
+            Boolean flag = template.opsForValue().setIfAbsent(LOCK_NAME, value, 10L, TimeUnit.SECONDS);
+            if (!flag) {
+                return "抢锁失败";
+            }
+            String result = template.opsForValue().get("goods:001");
+            int goodsNum = result == null ? 0 : Integer.parseInt(result);
+
+            if (goodsNum > 0) {
+                int realNum = goodsNum - 1;
+                template.opsForValue().set("goods:001", String.valueOf(realNum));
+                return "成功买到商品，库存剩余" + realNum;
+            } 
+            return "商品售罄~";
+        } finally {
+            // 事务
+            while (true) {
+                template.watch(LOCK_NAME);
+                // 删除key时判断，是否是加锁的客户端在执行操作
+                if (template.opsForValue().get(key).equals(value)) {
+                    template.setEnableTransactionSupport(true);
+                    template.multi();
+                    template.delete(LOCK_NAME);
+                    List<Object> list = template.exec();
+                    // 执行失败重试
+                    if (list == null) {
+                        continue;
+                    }
+                }
+                template.unwatch();
+                break;
+            }
+            
+            // **LUA
+            Jedis jedis = RedisUtils.getJedis();
+            String script = "if redis.call('get', KEYS[1]) == ARGV[1] " + 
+                "then " +
+                " return redis.call('del', KEYS[1]) " +
+                "else " + 
+                " return 0 " + 
+                "END";
+            try {
+                Object o = jedis.eval(script, Collections.singletonList(REDIS_LOCK), Collections.singletonList(value));
+                if ("1".equals(o)) {
+                    System.out.println("删除redis lock成功")；
+                } else {
+                    System.out.println("删除redis lock失败")；
+                }
+            } finally {
+                // **Jedis解锁
+                if (null != jedis) {
+                    jedis.close();
+                }
+                
+                // ##Redisson方式解锁操作
+                if (redissonLock.isLocked() && redissonLock.isHeldByCurrentThread()) {
+                    redissonLock.unlock();
+                }
+            }
+        }
+    }
+}
+```
 
 
 
+### 内存淘汰策略
 
+redis默认内存大小：如果不设置最大内存大小或者最大内存大小为0，在64位操作系统下不限制内存大小，32位操作系统下最多使用3GB内存。默认单位是字节，配置时要注意单位转换。
 
+生产上内存大小最好设置成最大物理内存的四分之三。
 
+设置内存大小方式：
 
+- 修改配置文件  maxmemory 104857600
 
+- 通过命令修改
+
+  ```shell
+  >> config get maxmemory
+  >> config set maxmemory 1
+  ```
+
+查看redis内存情况：info memory
+
+过期键删除策略：定时删除（键过期立即删除）、惰性删除（使用键时判断是否过期，过期则删除）、定期删除（抽样删除过期键）
+
+内存淘汰策略：noevication（默认）、allkeys-lru、volatile-lru、allkeys-random、volatile-random、allkeys-lfu、volatile-lfu、volatile-ttl
+
+### lru算法
+
+lru算法思想：查找快、插入快、删除快、且要有先后排序
+
+lru算法核心：哈希链表LinkedHashMap，本质是HashMap+DoubleLinkedList，时间复杂度是O(1)
+
+案例一：
+
+```java
+/**
+ * 继承LinkedHashMap
+ */
+public class LRUCacheDemo<K, V> extends LinkedHashMap<K, V> {
+    private int capcity;
+    
+    public LRUCacheDemo(int capcity) {
+        // 参数说明：容量，负载因子，访问顺序：true--按照访问频率排序；false--按照插入顺序排序
+        super(capcity, 0.75F, true);
+        this.capcity = capcity;
+    }
+    
+    // 重写父类 移除最少使用元素 的方法
+    protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
+        return super.size() > capcity;
+    }
+    
+    public static void main() {
+        LRUCacheDemo lru = new LRUCacheDemo();
+        lru.put(1, "a");
+        lru.put(2, "b");
+        lru.put(3, "c");
+        System.out.println(lru.keySet()); // [1,2,3] [1,2,3]
+        
+        lru.put(4, "d");
+        System.out.println(lru.keySet()); // [2,3,4] [2,3,4]
+        
+        lru.put(3, "c");
+        System.out.println(lru.keySet()); // [2,4,3] [2,3,4]
+        lru.put(3, "c");
+        System.out.println(lru.keySet()); // [2,4,3] [2,3,4]
+        lru.put(5, "x");
+        System.out.println(lru.keySet()); // [4,3,5] [3,4,5]
+    }
+}
+```
+
+案例二：
+
+```java
+/**
+ * 手写LRU
+ */
+public class LRUCache {
+    
+    // map负责查找，构建一个虚拟的双向链表，它里面安装的就是一个Node节点，作为数据载体
+    // 1.构造一个Node节点作为数据载体
+    class Node<K, V> {
+        K key;
+        V value;
+        Node<K, V> prev;
+        Node<K, V> next;
+        
+       	public Node() {
+            this.prev = this.next = null;
+        }
+        
+        public Node(K key, V value) {
+            this.key = key;
+            this.value = value;
+            this.prev = this.next = null;
+        }
+    }
+    
+    // 2.构造一个双向链表，用于存放Node节点
+    class DoubleLinkedList<K, V> {
+        Node<K, V> head;
+        Node<K, V> tail;
+        
+        public DoubleLinkedList() {
+            head = new Node<>();
+            tail = new Node<>();
+            head.next = tail;
+            tail.prev = head;
+        }
+        
+        // 添加节点
+        public void addHead(Node<K, V> node) {
+            // 当前节点后继指针指向头节点后继节点（尾节点）
+            node.next = head.next;
+            // 尾节点前驱指针指向当前节点
+            head.next.prev = node;
+            // 头节点后继指针指向当前节点
+            head.next = node;
+            // 当前节点前驱指针指向头节点
+            node.prev = head;
+        }
+        
+        // 删除节点
+        public void removeNode(Node<K, V> node) {
+            node.next.prev = node.prev;
+            node.prev.next = node.next;
+            // 当前节点的指针全部指向空，相当于出队
+            node.prev = null;
+            node.next = null;
+        }
+        
+        // 获得最后一个节点
+        public Node getLast() {
+            return tail.prev;
+        }
+    }
+    
+    // 容量大小
+    private int cacheSize;
+    Map<Integer, Node<Integer, Integer>> map;
+    DoubleLinkedList<Integer, Integer> doubleLinkedList;
+    
+    public LRUCache(int cacheSize) {
+        this.cacheSize= cacheSize；
+        map = new HashMap<>();
+        doubleLinkedList = new DoubleLinkedList<>();
+    }
+    
+    
+    public int get(int key) {
+    	if (!map.containsKey(key)) {
+            reutrn -1;
+        }
+        
+        Node<Integer, Integer> node = map.get(key);
+        // 频繁使用（读和写）的现从链表中删除，再加到队头
+        doubleLinkedList.removeNode(node);
+        doubleLinkedList.addHead(node);
+    }
+    
+    // 更新和新增
+    public void put(int key, int value) {
+        // 更新节点
+        if (map.contains(key)) {
+            Node<Integer, Integer> node = map.get(key);
+            node.value = value;
+            map.put(key, node);
+            
+            doubleLinkedList.removeNode(node);
+       		doubleLinkedList.addHead(node);
+        } else {
+            // 容量达到最大值
+            if (map.size() == cacheSize) {
+                Node<Integer, Integer> lastNode = doubleLinkedList.getLast();
+                map.remove(lastNode.key);
+                doubleLinkedList.removeNode(lastNode);
+            }
+                    
+            // 新增节点
+            Node<Integer, Integer> newNode = new Node<>(key, value)
+            map.put(key, newNode);
+            doubleLinkedList.addHead(newNode);
+        }
+    }
+    
+    public static void main(String[] args) {
+        // 测试同上
+    }
+}
+```
+
+![ms-010](https://cdn.jsdelivr.net/gh/Polar1sssss/FigureBed/img/ms-010.png)
